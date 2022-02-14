@@ -9,6 +9,7 @@ import (
 	"hash/crc32"
 	"io"
 	"io/fs"
+	"strings"
 	"sync"
 
 	"github.com/skillian/errors"
@@ -23,6 +24,19 @@ type Indicator interface {
 	// Indicate reads the reader and appends into bs an indication
 	// which can be used to identify the uniqueness of the data.
 	Indicate(ctx context.Context, r io.Reader, ind *Indication) error
+}
+
+var indicators = map[string]Indicator{
+	lengthIndicatorKey: LengthIndicator,
+	crc32Key:           CRC32Indicator,
+	sha256Key:          SHA256Indicator,
+}
+
+// ParseIndicator parses an indicator by its key
+func ParseIndicator(s string) (Indicator, bool) {
+	s = strings.TrimSpace(strings.ToLower(s))
+	ir, ok := indicators[s]
+	return ir, ok
 }
 
 // IndicatorCmper can be implemented by Indicators to compare
@@ -71,6 +85,32 @@ func PutIndication(i **Indication) {
 // Bytes accesses the byte representation of the indication directly.
 func (i *Indication) Bytes() []byte { return i.buf }
 
+func (i *Indication) Each(fn func(key, value []byte) error) error {
+	r := i.Reader()
+	for {
+		key, value, err := r.Next()
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+		if err = fn(key, value); err != nil {
+			return err
+		}
+	}
+}
+
+// Lookup creates an IndicationLookup from an indication.
+func (i *Indication) Lookup() (IndicationLookup, error) {
+	lookup := make(IndicationLookup)
+	err := i.Each(func(key, value []byte) error {
+		lookup[Bytes(key)] = value
+		return nil
+	})
+	return lookup, err
+}
+
 // Reader creates a reader over the Indication that parses its keys
 // and values out.
 func (i *Indication) Reader() (reader interface {
@@ -93,6 +133,14 @@ func (i *Indication) Write(key, value []byte) {
 	}
 	writeSlice(i, key)
 	writeSlice(i, value)
+}
+
+type IndicationLookup map[Bytes][]byte
+
+func (lu IndicationLookup) WriteToIndication(ind *Indication) {
+	for k, v := range lu {
+		ind.Write([]byte(k), v)
+	}
 }
 
 type indicationReader struct {
@@ -239,16 +287,20 @@ func (irs *Indicators) Indicate(ctx context.Context, r io.Reader, ind *Indicatio
 	return errs
 }
 
+const crc32Key = "crc32"
+
 // CRC32Indicator computes the CRC32 of its data
 var CRC32Indicator Indicator = hashAndLengthIndicator{
 	hasher: func() hash.Hash { return crc32.NewIEEE() },
-	key:    "crc32",
+	key:    crc32Key,
 }
+
+const sha256Key = "sha256"
 
 // SHA256Indicator computes the SHA-256 of its data
 var SHA256Indicator Indicator = hashAndLengthIndicator{
 	hasher: sha256.New,
-	key:    "sha256",
+	key:    sha256Key,
 }
 
 type hashAndLengthIndicator struct {

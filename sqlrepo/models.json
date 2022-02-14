@@ -1,0 +1,49 @@
+{
+	"databases": [
+		{
+			"rawName": "unique file",
+			"schemas": [
+				{
+					"tables": [
+						{
+							"rawName": "resource",
+							"columns": [
+								{
+									"rawName": "resource id",
+									"type": "int(64)",
+									"pk": true
+								},
+								{
+									"rawName": "uri",
+									"type": "string(var: true)"
+								}
+							]
+						},
+						{
+							"rawName": "indication",
+							"columns": [
+								{
+									"rawName": "indication id",
+									"type": "int(64)",
+									"pk": true
+								},
+								{
+									"rawName": "resource id",
+									"fk": "resource.resource id"
+								},
+								{
+									"rawName": "key",
+									"type":"string(length: 16)"
+								},
+								{
+									"rawName": "value",
+									"type": "bytes(var: true)"
+								}
+							]
+						}
+					]
+				}
+			]
+		}
+	]
+}
